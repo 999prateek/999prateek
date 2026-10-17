@@ -1,8 +1,0 @@
-streamlit>=1.40
-pypdf>=5.0
-pandas>=2.2
-requests>=2.32
-# Optional voice support:
-faster-whisper>=1.1
-edge-tts>=6.1
-deep-translator>=1.11
