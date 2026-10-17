@@ -1,94 +1,69 @@
-# RajBhasha AI — Rajasthan Language-Agnostic Education Chatbot
+# Simplify AI — General-purpose multilingual chatbot
 
-A Python-first hackathon prototype for SIH25104. It includes a Streamlit web UI, local SQLite persistence, PDF ingestion, lightweight retrieval, an optional OpenAI-compatible LLM endpoint, feedback capture, analytics, and optional voice hooks.
+Python-first web app with general Q&A through a configured LLM, optional live web search, uploaded document Q&A, multilingual response preferences, chat history, analytics, and optional voice integrations.
+
+## Features
+- General-purpose assistant, not restricted to Rajasthan or education
+- Optional live public-web search via `ddgs`
+- Upload and extract PDF, DOCX, TXT, Markdown, and CSV
+- Retrieval-augmented question answering over uploaded files
+- Source links for web results and labels for document chunks
+- Hindi, English, Hinglish and other language preferences
+- Local SQLite chat/document storage
+- Optional speech-to-text and text-to-speech
+- Analytics view
 
 ## Run locally
-
-Python 3.10+ recommended.
-
 ```bash
 python -m venv .venv
-# macOS/Linux
 source .venv/bin/activate
-# Windows
-# .venv\Scripts\activate
-
 pip install -r requirements.txt
 streamlit run app.py
 ```
+Windows activation: `.venv\Scripts\activate`
 
-Open the local URL shown by Streamlit (normally http://localhost:8501).
+## Configure the AI engine
+The app expects an OpenAI-compatible endpoint:
+- `OPENAI_BASE_URL` — endpoint base URL, such as a provider's compatible API base
+- `OPENAI_API_KEY` — provider key
+- `LLM_MODEL` — model identifier accepted by that endpoint
 
-## Configure a language model (recommended)
-
-Copy `.env.example` to `.env`, then set environment variables in your shell or deployment platform. The app currently reads environment variables; it does not automatically parse `.env`.
-
-Example for an OpenAI-compatible local endpoint:
+Example environment variables (replace with actual values):
 ```bash
-export OPENAI_BASE_URL=http://localhost:11434/v1
-export OPENAI_API_KEY=local-dev-key
-export LLM_MODEL=llama3.1
+OPENAI_BASE_URL=https://YOUR_PROVIDER_COMPATIBLE_ENDPOINT/v1
+OPENAI_API_KEY=YOUR_API_KEY
+LLM_MODEL=YOUR_MODEL_NAME
 ```
+The example is a configuration pattern, not a working credential. Do not put API keys into public GitHub repositories. On Streamlit Community Cloud, set these under app Secrets and adapt the code to read them from `st.secrets` if desired.
 
-Make sure your local model server actually exposes an OpenAI-compatible `/chat/completions` endpoint. Model names and provider URLs vary.
+Without a configured LLM, the app can display retrieved document passages or web results but cannot synthesize a general AI answer.
 
-Without a configured LLM, the app still retrieves matching document chunks and shows them as excerpts rather than fabricating an answer.
+## How document Q&A works
+1. Upload a supported file.
+2. The app extracts text and splits it into overlapping chunks.
+3. When you ask a question, lightweight keyword retrieval selects relevant chunks.
+4. The selected excerpts are sent to the configured LLM as context.
+5. The answer is expected to use the excerpts and admit when the document does not contain the answer.
 
-## Included features
+This starter uses keyword overlap rather than semantic vector embeddings. For production, use multilingual embeddings with pgvector or Qdrant, chunk by headings/pages, rerank passages, and show exact page citations.
 
-- Hindi/English/Hinglish and script-based language detection
-- Chat interface with user personas
-- PDF upload and indexing into SQLite
-- Source labels and conservative no-answer fallback
-- Feedback buttons
-- Admin analytics for message volume, language mix, rough topic counts, and recent messages
-- Optional Whisper transcription and TTS support
+## Real-time web answers
+When enabled, the app attempts a public-web search for each question and passes result snippets to the model. This improves freshness but is not a guarantee of real-time truth: search may fail, pages may be outdated, and the model can still make mistakes. For production, use a supported search API with explicit rate limits and source handling.
 
-## Important prototype limitations
+## Deployment
+For a no-terminal deployment:
+1. Extract the ZIP.
+2. Upload files to a GitHub repository using the website.
+3. Create a Streamlit Community Cloud app pointing to `app.py`.
+4. Add model settings as deployment secrets/environment variables.
+5. Deploy and test the public link.
 
-- The retrieval function uses token overlap, not multilingual semantic embeddings. Replace it with multilingual sentence embeddings plus pgvector or Qdrant before production.
-- Language detection is heuristic. It is not reliable for all Romanized dialects or short messages.
-- Real Bhashini/Sarvam APIs require current provider credentials and endpoint-specific request schemas; they are not falsely simulated here.
-- Streamlit's audio capture and browser support vary. For a robust voice experience, build an explicit upload/record component and test on target devices.
-- Analytics are not authenticated in this demo. Do not deploy publicly with real data until you add login, role-based authorization, rate limits, privacy controls, and secure secrets.
-- PDF extraction will not OCR scanned PDFs. Add OCR (e.g., Tesseract) as a separate ingestion stage.
-- Never treat generated content as an official decision. Show source documents and confirm current rules with the responsible department.
+Public deployment requires dependency installation and a configured model provider. This project does not include hosting credentials or a hosted URL.
 
-## Architecture blueprint
-
-### Hackathon MVP stack
-- **UI:** Streamlit (all-Python interface; fastest path to a demo)
-- **API/business logic:** Python modules in this prototype; for a production split, expose services through FastAPI
-- **Database:** SQLite for demo; PostgreSQL for multi-user production
-- **Cache/session state:** Streamlit session state now; Redis for rate limits, caching, and distributed sessions later
-- **Document retrieval:** SQLite chunk store now; multilingual embeddings + pgvector/Qdrant in production
-- **LLM:** configurable OpenAI-compatible endpoint (self-hosted vLLM/Ollama-compatible gateway or hosted provider)
-- **ASR:** optional faster-whisper locally; production adapter for Bhashini/Sarvam
-- **TTS:** optional edge-tts demo; production Indic TTS provider
-
-### Request pipeline
-1. Accept typed text or audio.
-2. Detect script/language heuristically; production should use a language-ID model and preserve original text.
-3. Normalize whitespace and common Hinglish spelling variants without destroying the original.
-4. Retrieve relevant passages from verified PDFs.
-5. Send question + retrieved context to a multilingual LLM with a strict grounded-answer prompt.
-6. Respond in the requested language; if unsupported, ask whether Hindi or English is acceptable.
-7. Show citations, confidence/coverage, and a feedback action.
-8. Optionally synthesize audio in the selected language.
-
-### Recommended production database entities
-- `users`: user ID, role, preferred language, consent flags
-- `sessions`: session ID, user ID (nullable/anonymous), created/updated timestamps
-- `messages`: session ID, role, original text, detected language, response language, content, created timestamp
-- `documents`: title, source URL, publisher, issue date, checksum, verification status
-- `chunks`: document ID, page, text, embedding vector, metadata
-- `feedback`: message ID, rating, reason, created timestamp
-- `events`: anonymized event type, language, topic, timestamp
-
-### Production quality gates
-- Only index documents from approved/verified sources.
-- Attach page number/URL to every retrieved chunk and show citations inline.
-- If retrieval scores are low, ask a clarifying question or say no matching official source was found.
-- Use a multilingual embedding model (e.g. BGE-M3 or a suitable Indic embedding model) and evaluate it on Hindi, Hinglish, and Rajasthani samples.
-- Build a golden test set with native-speaker-reviewed answers, source attribution, ASR accuracy, and response latency.
-- Set retention policies, redact personal data, protect admin analytics, and do not log raw audio by default.
+## Security and limitations
+- Never commit API keys or private documents to a public repository.
+- Add authentication before sharing private document uploads or analytics.
+- This is a prototype, not an infallible "knows everything" system.
+- Verify medical, legal, financial, and safety-critical answers with trusted professionals or official sources.
+- Scanned PDFs need OCR; this starter only extracts embedded text.
+- Local files and SQLite are not a durable multi-user cloud storage architecture.
